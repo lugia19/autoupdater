@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -29,7 +28,7 @@ func findPython(path string, info os.FileInfo, err error) error {
 
 	base := filepath.Base(path)
 	if runtime.GOOS == "windows" {
-		data, err := ioutil.ReadFile("repo.json")
+		data, err := os.ReadFile("repo.json")
 		if err != nil {
 			log.Fatalf("Error reading repo.json: %v", err)
 		}
