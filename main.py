@@ -7,6 +7,8 @@ import subprocess
 import googletrans
 from PyQt6 import QtWidgets
 from dulwich import porcelain
+from dulwich.repo import Repo
+from dulwich.client import get_transport_and_path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import pyqtSignal, QObject
 
@@ -63,8 +65,8 @@ def translate_ui_text(text):
 
     return translatedText
 
-normalInstallText = translate_ui_text("Installing packages...")
-torchInstallText = translate_ui_text("Installing pytorch, this may take a while...")
+normalInstallText = translate_ui_text("Updating packages...")
+torchInstallText = translate_ui_text("Updating pytorch, this may take a while...")
 
 def get_stylesheet():
     styleSheet = """
@@ -110,7 +112,7 @@ class DownloadDialog(QtWidgets.QDialog):
         self.boolSignalEmitter.signal.connect(self.setpytorch)
 
         self.layout = QtWidgets.QVBoxLayout()
-        self.label = QtWidgets.QLabel(translate_ui_text("Installing packages..."))
+        self.label = QtWidgets.QLabel(normalInstallText)
         self.layout.addWidget(self.label)
 
         self.progress = QtWidgets.QProgressBar(self)
@@ -162,10 +164,13 @@ def clone_or_pull(gitUrl, targetDirectory):
     else:
         porcelain.pull(targetDirectory, gitUrl)
 
-def check_and_run_setup(repo_dir):
+def check_and_run_repo(repo_dir):
     setup_file = os.path.join(repo_dir, 'setup.py')
+    main_file = os.path.join(repo_dir, 'main.py')
     if os.path.exists(setup_file):
         subprocess.check_call([sys.executable, setup_file])
+    elif os.path.exists(main_file):
+        subprocess.check_call([sys.executable, main_file])
 
 
 def check_requirements(repo_dir):
@@ -186,19 +191,41 @@ def check_requirements(repo_dir):
 
     return packages
 
+
+def check_if_latest(repo_path, remote_url) -> bool:
+    # Open the local repository
+    repo = Repo(repo_path)
+
+    # Get the current commit
+    head = repo[b"HEAD"]
+
+    # Open the remote repository
+    client, path = get_transport_and_path(remote_url)
+    remote_refs = client.get_refs(path)
+
+    # Check if current commit is the latest one
+    return head.id == remote_refs[b"HEAD"]
+
 def main():
     app = QApplication([])
     app.setStyleSheet(get_stylesheet())
     repoDir = os.path.basename(repoURL).replace(".git", "")
-    clone_or_pull(repoURL,repoDir)
-    packages = check_requirements(repoDir)
 
-    if len(packages) > 0:
-        dialog = DownloadDialog(packages)
-        dialog.exec()
+    #If it's missing or not the latest commit anymore, do a pull and make sure the requirements haven't changed.
+    #Also if it was previously installing and was interrupted partway through.
+    if os.path.exists("installing") or not os.path.exists(repoDir) or not check_if_latest(repoDir, repoURL):
+        open("installing", 'w').close()
+        clone_or_pull(repoURL,repoDir)
+        packages = check_requirements(repoDir)
 
-    check_and_run_setup(repoDir)
-    sys.exit(app.exec())
+        if len(packages) > 0:
+            dialog = DownloadDialog(packages)
+            dialog.exec()
+        os.remove("installing")
+
+
+    check_and_run_repo(repoDir)
+    sys.exit()
 
 if __name__ == "__main__":
     main()
