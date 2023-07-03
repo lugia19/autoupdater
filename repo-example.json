@@ -1,0 +1,5 @@
+{
+  "repo_url": "https://github.com/username/examplerepo.git",
+  "repo_dir": "ExampleRepo",
+  "startup_script": "main.py"
+}

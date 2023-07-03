@@ -1,3 +1,4 @@
+import json
 import locale
 import os
 import sys
@@ -12,7 +13,7 @@ from dulwich.client import get_transport_and_path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import pyqtSignal, QObject
 
-repoURL = 'https://github.com/lugia19/Echo-XI.git'
+repoData = json.load(open("repo.json"))
 
 colors_dict = {
     "primary_color":"#1A1D22",
@@ -164,13 +165,10 @@ def clone_or_pull(gitUrl, targetDirectory):
     else:
         porcelain.pull(targetDirectory, gitUrl)
 
-def check_and_run_repo(repo_dir):
-    setup_file = os.path.join(repo_dir, 'setup.py')
-    main_file = os.path.join(repo_dir, 'main.py')
-    if os.path.exists(setup_file):
-        subprocess.check_call([sys.executable, setup_file])
-    elif os.path.exists(main_file):
-        subprocess.check_call([sys.executable, main_file])
+def run_startup(repo_dir, script):
+    startup_file = os.path.join(repo_dir, script)
+    if os.path.exists(startup_file):
+        subprocess.check_call([sys.executable, startup_file])
 
 
 def check_requirements(repo_dir):
@@ -209,7 +207,9 @@ def check_if_latest(repo_path, remote_url) -> bool:
 def main():
     app = QApplication([])
     app.setStyleSheet(get_stylesheet())
-    repoDir = os.path.basename(repoURL).replace(".git", "")
+    repoURL = repoData["repo_url"]
+    repoDir = repoData["repo_dir"]
+    startupScript = repoData["startup_script"]
 
     #If it's missing or not the latest commit anymore, do a pull and make sure the requirements haven't changed.
     #Also if it was previously installing and was interrupted partway through.
@@ -224,7 +224,7 @@ def main():
         os.remove("installing")
 
 
-    check_and_run_repo(repoDir)
+    run_startup(repoDir, startupScript)
     sys.exit()
 
 if __name__ == "__main__":
