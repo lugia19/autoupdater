@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -10,6 +13,10 @@ import (
 )
 
 var pythonBinaryPath string
+
+type Config struct {
+	UsePythonW bool `json:"use_pythonw"`
+}
 
 func findPython(path string, info os.FileInfo, err error) error {
 	if err != nil {
@@ -21,7 +28,26 @@ func findPython(path string, info os.FileInfo, err error) error {
 	}
 
 	base := filepath.Base(path)
-	if (runtime.GOOS == "windows" && strings.EqualFold(base, "python.exe")) || base == "python" {
+	if runtime.GOOS == "windows" {
+		data, err := ioutil.ReadFile("repo.json")
+		if err != nil {
+			log.Fatalf("Error reading repo.json: %v", err)
+		}
+
+		var config Config
+		err = json.Unmarshal(data, &config)
+		if err != nil {
+			log.Fatalf("Error parsing repo.json: %v", err)
+		}
+
+		if config.UsePythonW && strings.EqualFold(base, "pythonw.exe") {
+			pythonBinaryPath = path
+			return filepath.SkipDir
+		} else if !config.UsePythonW && strings.EqualFold(base, "python.exe") {
+			pythonBinaryPath = path
+			return filepath.SkipDir
+		}
+	} else if base == "python" {
 		pythonBinaryPath = path
 		return filepath.SkipDir
 	}
@@ -30,6 +56,8 @@ func findPython(path string, info os.FileInfo, err error) error {
 }
 
 func main() {
+	fmt.Println("Started!") // Here's your print statement.
+
 	pythonScript := "install.py"
 
 	err := filepath.Walk(".", findPython)
@@ -50,6 +78,9 @@ func main() {
 	if pythonBinaryPath == "" {
 		log.Fatalf("Python binary not found")
 	}
+
+	fmt.Println("Python Binary Path: ", absPythonBinaryPath) // Print pythonBinaryPath
+	fmt.Println("Python Script Path: ", absPythonScriptPath) // Print absPythonScriptPath
 
 	cmd := exec.Command(absPythonBinaryPath, absPythonScriptPath)
 
