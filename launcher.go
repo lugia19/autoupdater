@@ -37,6 +37,11 @@ func main() {
 		log.Fatalf("Error walking the path: %v", err)
 	}
 
+	absPythonBinaryPath, err := filepath.Abs(pythonBinaryPath)
+	if err != nil {
+		log.Fatalf("Cannot resolve absolute path for python binary: %s", err)
+	}
+
 	absPythonScriptPath, err := filepath.Abs(pythonScript)
 	if err != nil {
 		log.Fatalf("Cannot resolve absolute path for python script: %s", err)
@@ -46,9 +51,9 @@ func main() {
 		log.Fatalf("Python binary not found")
 	}
 
-	cmd := exec.Command(pythonBinaryPath, absPythonScriptPath)
+	cmd := exec.Command(absPythonBinaryPath, absPythonScriptPath)
 
-	err = cmd.Start()
+	err = cmd.Run()
 	if err != nil {
 		log.Fatal(err)
 	}
