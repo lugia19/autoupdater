@@ -173,9 +173,9 @@ def clone_or_pull(gitUrl, targetDirectory):
         porcelain.pull(targetDirectory, gitUrl)
 
 def run_startup(repo_dir, script):
-    startup_file = os.path.join(repo_dir, script)
-    if os.path.exists(startup_file):
-        subprocess.check_call([sys.executable, startup_file])
+    if os.path.exists(os.path.join(repo_dir, script)):
+        os.chdir(repo_dir)
+        subprocess.check_call([sys.executable, script])
 
 
 def check_requirements(repo_dir):
