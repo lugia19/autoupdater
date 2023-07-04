@@ -7,6 +7,7 @@ import subprocess
 
 import googletrans
 from PyQt6 import QtWidgets
+from PyQt6.QtGui import QIcon
 from dulwich import porcelain
 from dulwich.repo import Repo
 from dulwich.client import get_transport_and_path
@@ -206,6 +207,8 @@ def check_if_latest(repo_path, remote_url) -> bool:
 
 def main():
     app = QApplication([])
+    if "icon" in repoData:
+        app.setWindowIcon(QIcon(repoData["icon"]))
     app.setStyleSheet(get_stylesheet())
     repoURL = repoData["repo_url"]
     repoDir = repoData["repo_dir"]
@@ -228,4 +231,8 @@ def main():
     sys.exit()
 
 if __name__ == "__main__":
+    if os.name == "nt":
+        import ctypes
+        myappid = u'lugia19.installer'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     main()

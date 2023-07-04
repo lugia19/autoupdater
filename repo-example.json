@@ -3,5 +3,6 @@
   "repo_dir": "ExampleRepo",
   "startup_script": "main.py",
   "use_pythonw": false,
-  "venv_folder": "venv"
+  "venv_folder": "venv",
+  "icon": "icon.ico"
 }
