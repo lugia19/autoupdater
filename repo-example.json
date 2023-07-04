@@ -2,5 +2,6 @@
   "repo_url": "https://github.com/username/examplerepo.git",
   "repo_dir": "ExampleRepo",
   "startup_script": "main.py",
-  "use_pythonw": false
+  "use_pythonw": false,
+  "venv_folder": "venv"
 }
