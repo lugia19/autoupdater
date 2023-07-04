@@ -14,7 +14,8 @@ import (
 var pythonBinaryPath string
 
 type Config struct {
-	UsePythonW bool `json:"use_pythonw"`
+	UsePythonW bool   `json:"use_pythonw"`
+	VenvFolder string `json:"venv_folder"`
 }
 
 func findPython(path string, info os.FileInfo, err error) error {
@@ -27,18 +28,24 @@ func findPython(path string, info os.FileInfo, err error) error {
 	}
 
 	base := filepath.Base(path)
+
+	data, err := os.ReadFile("repo.json")
+	if err != nil {
+		log.Fatalf("Error reading repo.json: %v", err)
+	}
+
+	var config Config
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Fatalf("Error parsing repo.json: %v", err)
+	}
+
+	// Only look in the specified venv folder if it is provided
+	if config.VenvFolder != "" && !strings.HasPrefix(path, config.VenvFolder) {
+		return nil
+	}
+
 	if runtime.GOOS == "windows" {
-		data, err := os.ReadFile("repo.json")
-		if err != nil {
-			log.Fatalf("Error reading repo.json: %v", err)
-		}
-
-		var config Config
-		err = json.Unmarshal(data, &config)
-		if err != nil {
-			log.Fatalf("Error parsing repo.json: %v", err)
-		}
-
 		if config.UsePythonW && strings.EqualFold(base, "pythonw.exe") {
 			pythonBinaryPath = path
 			return filepath.SkipDir
