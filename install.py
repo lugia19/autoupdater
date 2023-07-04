@@ -11,7 +11,7 @@ from PyQt6.QtGui import QIcon
 from dulwich import porcelain
 from dulwich.repo import Repo
 from dulwich.client import get_transport_and_path
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import pyqtSignal, QObject
 
 repoData = json.load(open("repo.json"))
@@ -129,12 +129,18 @@ class DownloadDialog(QtWidgets.QDialog):
         self.progress.setMaximum(100)
 
         for i, package in enumerate(self.packages):
-            self.boolSignalEmitter.signal.emit("-r" in package)
+            package:str
+            self.boolSignalEmitter.signal.emit(package.startswith("-r"))
 
-            if "-r" in package:
-                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package.replace("-r","").strip()])
-            else:
-                subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', package])
+            try:
+                if package.startswith("-r"):
+                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True)
+                else:
+                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True)
+            except subprocess.CalledProcessError as e:
+                QMessageBox.critical(self, 'Error', f"An error occurred while installing package '{package}':\n{e.stderr}")
+                return
+
             self.update_progress_bar(i + 1, total_packages)
 
         self.signalEmitter.signal.emit()
