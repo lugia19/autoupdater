@@ -148,6 +148,15 @@ def get_stylesheet():
     QProgressBar::chunk {
         background-color: {toggle_color};
     }
+    
+    QPushButton {
+        background-color: {secondary_color};
+        color: {text_color};
+    }
+    
+    QPushButton:hover {
+        background-color: {hover_color};
+    }
     """
 
     for colorKey, colorValue in colors_dict.items():
@@ -175,7 +184,7 @@ class DownloadDialog(QtWidgets.QDialog):
 
         self.setLayout(self.layout)
 
-        self.download_thread = threading.Thread(target=self.install_packages)
+        self.download_thread = threading.Thread(target=self.install_packages, daemon=True)
 
     def install_packages(self):
         total_packages = len(self.packages)
@@ -228,7 +237,8 @@ class DownloadDialog(QtWidgets.QDialog):
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            exit(1)
+            event.accept()
+            sys.exit(1)
         else:
             event.ignore()
 
