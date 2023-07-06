@@ -6,6 +6,7 @@ import threading
 import subprocess
 
 baserequirements = [
+    "requests",
     "googletrans~=4.0.0rc1",
     "PyQt6~=6.5.1",
     "dulwich~=0.21.5"
@@ -34,6 +35,7 @@ try:
     from PyQt6 import QtWidgets, QtCore, QtGui
     import dulwich
     from dulwich import porcelain, client, repo
+    import requests
 except ImportError:
     #Prerequisite not found, need to install the base requirements
     import tkinter as tk
@@ -91,7 +93,18 @@ def translate_ui_text(text):
     if text is None or text == "":
         return text
 
-    langCode = locale.getdefaultlocale()[0].split("_")[0]
+    if os.name == "nt":
+        # windows-specific
+        import ctypes
+        windll = ctypes.windll.kernel32
+        import locale
+        langCode = locale.windows_locale[windll.GetUserDefaultUILanguage()]
+        if "_" in langCode:
+            langCode = langCode.split("_")[0]
+    else:
+        # macos or linux
+        import locale
+        langCode = locale.getdefaultlocale()[0].split("_")[0]
 
     counter = 0
     translatedText = None
@@ -165,6 +178,80 @@ def get_stylesheet():
 
 
 class DownloadDialog(QtWidgets.QDialog):
+    def __init__(self, url, location):
+        super().__init__()
+        self.setWindowTitle(translate_ui_text('Download'))
+        self.url = url
+        self.location = location
+        self.signalEmitter = SignalEmitter()
+        self.signalEmitter.signal.connect(lambda: self.done(0))
+        self.layout = QtWidgets.QVBoxLayout()
+        self.label = QtWidgets.QLabel(translate_ui_text("Downloading PyTorch..."))
+        self.layout.addWidget(self.label)
+
+        self.progress = QtWidgets.QProgressBar(self)
+        self.layout.addWidget(self.progress)
+
+        self.setLayout(self.layout)
+
+        self.download_thread = threading.Thread(target=self.download_file, daemon=True)
+
+    def download_file(self):
+        response = requests.get(self.url, stream=True)
+        total_size_in_bytes = response.headers.get('content-length')
+
+        if total_size_in_bytes is None:  # If 'content-length' is not found in headers
+            self.progress.setRange(0, 0)  # Set progress bar to indeterminate state
+        else:
+            total_size_in_bytes = int(total_size_in_bytes)
+            self.progress.setMaximum(100)
+
+        block_size = 1024  # 1 Kibibyte
+        progress_tracker = 0
+
+        try:
+            response.raise_for_status()
+            with open(self.location, 'wb') as file:
+                for data in response.iter_content(block_size):
+                    progress_tracker += len(data)
+                    file.write(data)
+                    if total_size_in_bytes is not None:  # Only update if 'content-length' was found
+                        self.update_progress_bar(progress_tracker, total_size_in_bytes)
+        except requests.exceptions.RequestException as e:
+            if os.path.exists(self.location):
+                os.remove(self.location)
+            raise
+        self.signalEmitter.signal.emit()
+
+    def finish(self):
+        self.done(0)
+    def update_progress_bar(self, progress_tracker, total_size_in_bytes):
+        percent_completed = (progress_tracker / total_size_in_bytes) * 100
+        self.progress.setValue(int(percent_completed))
+
+    def exec(self):
+        self.download_thread.start()
+        super().exec()
+
+    def show(self):
+        self.download_thread.start()
+        super().show()
+
+    def closeEvent(self, event):
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            translate_ui_text('Confirmation'),
+            translate_ui_text('Are you sure you want to quit?'),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No
+        )
+
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            event.accept()
+            sys.exit(1)
+        else:
+            event.ignore()
+
+class PackageDownloadDialog(QtWidgets.QDialog):
     def __init__(self, packages):
         super().__init__()
         self.setWindowTitle(translate_ui_text('Download Progress'))
@@ -195,8 +282,54 @@ class DownloadDialog(QtWidgets.QDialog):
             self.boolSignalEmitter.signal.emit(package.startswith("-r"))
 
             try:
+                #This is all pytorch-specific stuff.
                 if package.startswith("-r"):
-                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
+                    # process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--upgrade', "elevenlabslib"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    #                           creationflags=subprocess_flags)
+                    process = subprocess.Popen([sys.executable, '-m', 'pip', 'install','--progress-bar','on', '--upgrade', "-r", package[2:].strip()], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                               creationflags=subprocess_flags)
+                    url = None
+                    isCollecting = False
+                    for line in iter(process.stdout.readline, b''):  # Reads the output line by line.
+                        line = line.decode('utf-8').strip().lower()  # Decodes the bytes to string and removes newline character at the end.
+                        print(line)  # Logs the line.
+                        if "collecting torch" in line:
+                            #It's collecting torch
+                            isCollecting = True
+                        if isCollecting and "using cached" in line:
+                            #It's using the cached one. No need to do anything then.
+                            isCollecting = False
+
+                        if isCollecting and "downloading" in line:
+                            url = line[len("downloading"):]
+                            url = url[:url.rindex("(")].strip()
+                            print("Installing it so we add it to the cache again...")
+                            #Pip has selected the wheel to download. Kill it.
+                            process.stdout.close()  # Closes the stdout pipe.
+                            process.terminate()
+                            process.wait()
+                            break
+
+                    if url is not None:
+                        print(f"URL found: {url}")
+                        import urllib.parse
+                        filename = urllib.parse.unquote(url[url.rindex("/")+1:])
+                        print(f"Filename: {filename}")
+                        DownloadDialog(url, filename).exec()
+
+                        # Done downloading it - install it
+                        completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', filename], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
+                        print(completed_process.stdout)
+
+                        #Remove the file
+                        os.remove(filename)
+                        #Now we re-install the file.
+                        completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
+                        print(completed_process.stdout)
+                        print("HUH")
+                    else:
+                        print("We used the cached one or it was already installed. Just continue.")
+                    #subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
                 else:
                     subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
             except subprocess.CalledProcessError as e:
@@ -317,7 +450,7 @@ def main():
         packages = check_requirements(repoDir)
 
         if len(packages) > 0:
-            dialog = DownloadDialog(packages)
+            dialog = PackageDownloadDialog(packages)
             dialog.exec()
         os.remove("installing")
 
