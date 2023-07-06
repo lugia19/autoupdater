@@ -24,6 +24,7 @@ def install_base_requirements(installDoneEvent:threading.Event):
         print("Quitting...")
         installDoneEvent.set()
 
+print("Checking prerequisites...")
 try:
     import googletrans
     from PyQt6 import QtWidgets, QtCore, QtGui
@@ -59,10 +60,9 @@ except ImportError:
     check_event()  # start checking event
 
     root.mainloop()
-    print("Done.")
-    os.execv(sys.executable, ['python'] + sys.argv)
-    exit()
-
+    print("Done - exiting with errorcode 99 to signal the go exe to restart.")
+    exit(99)
+print("Prerequisites checked.")
 repoData = json.load(open("repo.json"))
 
 colors_dict = {
@@ -296,9 +296,10 @@ def main():
 
 
     run_startup(repoDir, startupScript)
-    sys.exit()
+    sys.exit(0)
 
 if __name__ == "__main__":
+    print("Starting main...")
     if os.name == "nt":
         import ctypes
         myappid = u'lugia19.installer'

@@ -121,9 +121,27 @@ func main() {
 	absPythonScriptPath, err := filepath.Abs(pythonScript)
 	checkError("Cannot resolve absolute path for python script", err)
 	fmt.Println("Python Script Path: ", absPythonScriptPath)
+	fmt.Println("Venv Python Binary Path: ", absNewVenvPythonBinaryPath)
 
 	cmd := exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
-
 	err = cmd.Run()
+
+	if err != nil {
+		exitError, ok := err.(*exec.ExitError) // type assert to *exec.ExitError
+		if ok {
+			exitCode := exitError.ExitCode()
+			if exitCode == 99 {
+				//Program just installed the prerequisites. Run it again.
+				cmd = exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
+				err = cmd.Run()
+			} else {
+				checkError("install.py script error", err)
+			}
+		} else {
+			checkError("install.py script error", err)
+		}
+	}
+
 	checkError("install.py script error", err)
+
 }
