@@ -11,12 +11,16 @@ baserequirements = [
     "dulwich~=0.21.5"
 ]
 
+subprocess_flags = 0
+if os.name == 'nt':  # Check if the operating system is Windows
+    subprocess_flags = subprocess.CREATE_NO_WINDOW  # Prevent the command prompt from appearing on Windows
+
 def install_base_requirements(installDoneEvent:threading.Event):
     print("Thread started...")
     try:
         pipargs = [sys.executable, '-m', 'pip', 'install', '--upgrade']
         pipargs.extend(baserequirements)
-        subprocess.check_call(pipargs)
+        subprocess.check_call(pipargs, creationflags=subprocess_flags)
     except subprocess.CalledProcessError as e:
         print(f"Failed to install packages: {e.output}")
     finally:
@@ -183,9 +187,9 @@ class DownloadDialog(QtWidgets.QDialog):
 
             try:
                 if package.startswith("-r"):
-                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True)
+                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
                 else:
-                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True)
+                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
             except subprocess.CalledProcessError as e:
                 QtWidgets.QMessageBox.critical(self, 'Error', f"An error occurred while installing package '{package}':\n{e.stderr}")
                 return
@@ -215,6 +219,19 @@ class DownloadDialog(QtWidgets.QDialog):
         self.download_thread.start()
         super().show()
 
+    def closeEvent(self, event):
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            translate_ui_text('Confirmation'),
+            translate_ui_text('Are you sure you want to quit?'),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No
+        )
+
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            exit(1)
+        else:
+            event.ignore()
+
 def clone_or_pull(gitUrl, targetDirectory):
     if not os.path.exists(targetDirectory):
         porcelain.clone(gitUrl, target=targetDirectory)
@@ -224,7 +241,7 @@ def clone_or_pull(gitUrl, targetDirectory):
 def run_startup(repo_dir, script):
     if os.path.exists(os.path.join(repo_dir, script)):
         os.chdir(repo_dir)
-        subprocess.check_call([sys.executable, script])
+        subprocess.check_call([sys.executable, script], creationflags=subprocess_flags)
 
 
 def check_requirements(repo_dir):

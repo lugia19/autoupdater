@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -99,6 +100,9 @@ func main() {
 		fmt.Println("Base-venv Python Binary Path: ", absBaseVenvPythonBinaryPath) // Print pythonBinaryPath
 
 		newVenvCommand := exec.Command(absBaseVenvPythonBinaryPath, "-m", "venv", config.VenvFolder)
+		if runtime.GOOS == "windows" {
+			newVenvCommand.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		}
 		err = newVenvCommand.Run()
 		checkError("Failed to create new venv", err)
 	} else if err != nil {
@@ -124,6 +128,9 @@ func main() {
 	fmt.Println("Venv Python Binary Path: ", absNewVenvPythonBinaryPath)
 
 	cmd := exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
+	if runtime.GOOS == "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	}
 	err = cmd.Run()
 
 	if err != nil {
@@ -133,6 +140,9 @@ func main() {
 			if exitCode == 99 {
 				//Program just installed the prerequisites. Run it again.
 				cmd = exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
+				if runtime.GOOS == "windows" {
+					cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+				}
 				err = cmd.Run()
 			} else {
 				checkError("install.py script error", err)
