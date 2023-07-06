@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 var pythonBinaryPath string
@@ -18,32 +19,16 @@ type Config struct {
 	VenvFolder string `json:"venv_folder"`
 }
 
+var config Config
+
 func findPython(path string, info os.FileInfo, err error) error {
-	if err != nil {
-		return err
-	}
+	checkError("walkPath error", err)
 
 	if info.IsDir() {
 		return nil
 	}
 
 	base := filepath.Base(path)
-
-	data, err := os.ReadFile("repo.json")
-	if err != nil {
-		log.Fatalf("Error reading repo.json: %v", err)
-	}
-
-	var config Config
-	err = json.Unmarshal(data, &config)
-	if err != nil {
-		log.Fatalf("Error parsing repo.json: %v", err)
-	}
-
-	// Only look in the specified venv folder if it is provided
-	if config.VenvFolder != "" && !strings.HasPrefix(path, config.VenvFolder) {
-		return nil
-	}
 
 	if runtime.GOOS == "windows" {
 		if config.UsePythonW && strings.EqualFold(base, "pythonw.exe") {
@@ -61,37 +46,84 @@ func findPython(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
+func checkError(message string, err error) {
+	if err != nil {
+		logMsg := fmt.Sprintf("%s: %v", message, err)
+
+		// Write to a log file
+		f, err := os.OpenFile("error.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal("Cannot open log file: ", err)
+		}
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+				log.Print("Failed to close file: ", err)
+			}
+		}(f)
+
+		// Get the current time and format it
+		currentTime := time.Now().Format("2006-01-02 15:04:05")
+
+		// Append the timestamp to the log message
+		timestampedLogMsg := fmt.Sprintf("%s %s\n", currentTime, logMsg)
+
+		// Write the timestamped log message to the file
+		if _, err := f.WriteString(timestampedLogMsg); err != nil {
+			log.Println("Cannot write to log file: ", err)
+		}
+
+		log.Fatal(logMsg)
+	}
+}
+
 func main() {
-	fmt.Println("Started!") // Here's your print statement.
+	fmt.Println("Started!")
 
+	data, err := os.ReadFile("repo.json")
+	checkError("Error reading repo.json", err)
+
+	err = json.Unmarshal(data, &config)
+	checkError("Error parsing repo.json", err)
+
+	//Check if venv already exists...
+	_, err = os.Stat(config.VenvFolder)
+	if os.IsNotExist(err) {
+		//Venv does not exist, create it.
+		err = filepath.Walk("base-venv", findPython)
+		checkError("Error walking the path", err)
+
+		absBaseVenvPythonBinaryPath, err := filepath.Abs(pythonBinaryPath)
+		checkError("Cannot resolve absolute path for python binary", err)
+
+		fmt.Println("Base-venv Python Binary Path: ", absBaseVenvPythonBinaryPath) // Print pythonBinaryPath
+
+		newVenvCommand := exec.Command(absBaseVenvPythonBinaryPath, "-m", "venv", config.VenvFolder)
+		err = newVenvCommand.Run()
+		checkError("Failed to create new venv", err)
+	} else if err != nil {
+		// error checking directory, report and exit
+		checkError("Error checking new venv directory", err)
+	} else {
+		// directory already exists, skip venv creation
+		fmt.Println("New venv directory already exists, skipping venv creation")
+	}
+
+	//Get the python exe from the new venv
+	err = filepath.Walk(config.VenvFolder, findPython)
+	checkError("Error walking the path", err)
+
+	absNewVenvPythonBinaryPath, err := filepath.Abs(pythonBinaryPath)
+	checkError("Cannot resolve absolute path for python binary", err)
+
+	//Get the script's location
 	pythonScript := "install.py"
-
-	err := filepath.Walk(".", findPython)
-	if err != nil {
-		log.Fatalf("Error walking the path: %v", err)
-	}
-
-	absPythonBinaryPath, err := filepath.Abs(pythonBinaryPath)
-	if err != nil {
-		log.Fatalf("Cannot resolve absolute path for python binary: %s", err)
-	}
-
 	absPythonScriptPath, err := filepath.Abs(pythonScript)
-	if err != nil {
-		log.Fatalf("Cannot resolve absolute path for python script: %s", err)
-	}
+	checkError("Cannot resolve absolute path for python script", err)
+	fmt.Println("Python Script Path: ", absPythonScriptPath)
 
-	if pythonBinaryPath == "" {
-		log.Fatalf("Python binary not found")
-	}
-
-	fmt.Println("Python Binary Path: ", absPythonBinaryPath) // Print pythonBinaryPath
-	fmt.Println("Python Script Path: ", absPythonScriptPath) // Print absPythonScriptPath
-
-	cmd := exec.Command(absPythonBinaryPath, absPythonScriptPath)
+	cmd := exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
 
 	err = cmd.Run()
-	if err != nil {
-		log.Fatal(err)
-	}
+	checkError("install.py script error", err)
 }
