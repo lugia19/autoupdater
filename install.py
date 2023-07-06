@@ -5,14 +5,57 @@ import sys
 import threading
 import subprocess
 
-import googletrans
-from PyQt6 import QtWidgets
-from PyQt6.QtGui import QIcon
-from dulwich import porcelain
-from dulwich.repo import Repo
-from dulwich.client import get_transport_and_path
-from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import pyqtSignal, QObject
+def install_base_requirements(installDoneEvent:threading.Event):
+    print("Thread started...")
+    try:
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', 'base-requirements.txt'])
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to install packages: {e.output}")
+    finally:
+        # Close the messagebox when done
+        print("Quitting...")
+        installDoneEvent.set()
+
+try:
+    import googletrans
+    from PyQt6 import QtWidgets, QtCore, QtGui
+    import dulwich
+    from dulwich import porcelain, client, repo
+except ImportError:
+    #Prerequisite not found, need to install the base requirements
+    import tkinter as tk
+    from tkinter import messagebox
+    import importlib
+
+    root = tk.Tk()
+    root.withdraw()  # Hide the main window
+
+    # Show a custom message window
+    top = tk.Toplevel()
+    top.title('Install')
+    msg = tk.Message(top, text="Installing prerequisites.\nPlease wait...", padx=20, pady=20)
+    msg.pack()
+
+    # Start the installation in a separate thread
+    install_done = threading.Event()
+    thread = threading.Thread(target=install_base_requirements, args=(install_done,))
+    thread.start()
+
+    def check_event():
+        if install_done.is_set():
+            root.destroy()
+        else:
+            root.after(100, check_event)
+
+
+    check_event()  # start checking event
+
+    root.mainloop()
+    print("Done.")
+    import googletrans
+    from PyQt6 import QtWidgets, QtCore, QtGui
+    import dulwich
+    from dulwich import porcelain, client, repo
 
 repoData = json.load(open("repo.json"))
 
@@ -29,11 +72,11 @@ colors_dict = {
 
 translator = googletrans.Translator()
 
-class SignalEmitter(QObject):
-    signal = pyqtSignal()
+class SignalEmitter(QtCore.QObject):
+    signal = QtCore.pyqtSignal()
 
-class BoolSignalEmitter(QObject):
-    signal = pyqtSignal(bool)
+class BoolSignalEmitter(QtCore.QObject):
+    signal = QtCore.pyqtSignal(bool)
 def translate_ui_text(text):
     if text is None or text == "":
         return text
@@ -138,7 +181,7 @@ class DownloadDialog(QtWidgets.QDialog):
                 else:
                     subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True)
             except subprocess.CalledProcessError as e:
-                QMessageBox.critical(self, 'Error', f"An error occurred while installing package '{package}':\n{e.stderr}")
+                QtWidgets.QMessageBox.critical(self, 'Error', f"An error occurred while installing package '{package}':\n{e.stderr}")
                 return
 
             self.update_progress_bar(i + 1, total_packages)
@@ -199,22 +242,22 @@ def check_requirements(repo_dir):
 
 def check_if_latest(repo_path, remote_url) -> bool:
     # Open the local repository
-    repo = Repo(repo_path)
+    gitRepo = dulwich.repo.Repo(repo_path)
 
     # Get the current commit
-    head = repo[b"HEAD"]
+    head = gitRepo[b"HEAD"]
 
     # Open the remote repository
-    client, path = get_transport_and_path(remote_url)
-    remote_refs = client.get_refs(path)
+    gitClient, path = client.get_transport_and_path(remote_url)
+    remote_refs = gitClient.get_refs(path)
 
     # Check if current commit is the latest one
     return head.id == remote_refs[b"HEAD"]
 
 def main():
-    app = QApplication([])
+    app = QtWidgets.QApplication([])
     if "icon" in repoData:
-        app.setWindowIcon(QIcon(repoData["icon"]))
+        app.setWindowIcon(QtGui.QIcon(repoData["icon"]))
     app.setStyleSheet(get_stylesheet())
     repoURL = repoData["repo_url"]
     repoDir = repoData["repo_dir"]
@@ -224,7 +267,20 @@ def main():
     #Also if it was previously installing and was interrupted partway through.
     if os.path.exists("installing") or not os.path.exists(repoDir) or not check_if_latest(repoDir, repoURL):
         open("installing", 'w').close()
-        clone_or_pull(repoURL,repoDir)
+        messageBox = QtWidgets.QMessageBox()
+        messageBox.setWindowTitle(translate_ui_text("Update"))
+        messageBox.setText(translate_ui_text("Updating Github repository..."))
+        messageBox.setStandardButtons(QtWidgets.QMessageBox.StandardButton.NoButton)
+        signalEmitter = SignalEmitter()
+        signalEmitter.signal.connect(lambda: messageBox.done(0))
+        def thread_func():
+            clone_or_pull(repoURL, repoDir)
+            signalEmitter.signal.emit()
+        pullThread = threading.Thread(target=thread_func)
+        pullThread.start()
+        QtCore.QTimer.singleShot(1, lambda: (messageBox.activateWindow(), messageBox.raise_()))
+        messageBox.exec()
+
         packages = check_requirements(repoDir)
 
         if len(packages) > 0:
