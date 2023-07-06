@@ -111,7 +111,7 @@ def translate_ui_text(text):
     return translatedText
 
 normalInstallText = translate_ui_text("Updating packages...")
-torchInstallText = translate_ui_text("Updating pytorch, this may take a while...")
+torchInstallText = translate_ui_text("Updating pytorch, this may take a while...\nNote: The bar not moving is normal.")
 
 def get_stylesheet():
     styleSheet = """
