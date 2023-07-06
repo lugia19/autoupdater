@@ -1,6 +1,6 @@
 # Go+Python installer/updater
 
-Essentially, this is just an installer designed to pull a project from a specified github repo, and install its prerequisites in a venv.
+Essentially, this is just an installer designed to pull a project from a specified github repo, and install its prerequisites in a venv (and keep it up to date with the repo).
 
 The components that are required to ship an application using it are:
 - The Go executable (exe for windows for example)
