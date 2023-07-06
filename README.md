@@ -12,11 +12,11 @@ The rundown on its functionality is:
 
 - Go program: 
   - Functions as the entrypoint (gets called to actually start the program)
-  - Will create a new venv from base-venv if not already done
-  - Will call install.py from it
+  - Creates a new venv from base-venv if not already done
+  - Calls install.py from the new venv
 - Install.py: 
-  - Will install its own prerequisites (from base-requirements.txt) if missing
-  - Will use dulwich to clone/pull the specified github repo
-  - Will install the requirements from the repo's requirements.txt (or try to update them if the repo has been updated)
-    - It will also first install those from requirements-torch.txt if present. This is designed to allow you to install pytorch with CUDA easily.
-  - It will launch the script defined in repo.json to start the application itself
+  - Install its own prerequisites (from base-requirements.txt) if missing
+  - Uses dulwich to clone/pull the specified github repo
+  - Installs the requirements from the repo's requirements.txt (or try to update them if the repo has been updated)
+    - First install packages from requirements-torch.txt if present. This is designed to allow you to install pytorch with CUDA easily.
+  - Launches the script defined in repo.json to start the application itself
