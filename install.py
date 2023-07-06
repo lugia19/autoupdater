@@ -5,10 +5,18 @@ import sys
 import threading
 import subprocess
 
+baserequirements = [
+    "googletrans~=4.0.0rc1",
+    "PyQt6~=6.5.1",
+    "dulwich~=0.21.5"
+]
+
 def install_base_requirements(installDoneEvent:threading.Event):
     print("Thread started...")
     try:
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', '-r', 'base-requirements.txt'])
+        pipargs = [sys.executable, '-m', 'pip', 'install', '--upgrade']
+        pipargs.extend(baserequirements)
+        subprocess.check_call(pipargs)
     except subprocess.CalledProcessError as e:
         print(f"Failed to install packages: {e.output}")
     finally:
@@ -52,10 +60,8 @@ except ImportError:
 
     root.mainloop()
     print("Done.")
-    import googletrans
-    from PyQt6 import QtWidgets, QtCore, QtGui
-    import dulwich
-    from dulwich import porcelain, client, repo
+    os.execv(sys.executable, ['python'] + sys.argv)
+    exit()
 
 repoData = json.load(open("repo.json"))
 
