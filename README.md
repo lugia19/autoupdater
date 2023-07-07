@@ -4,7 +4,7 @@ Essentially, this is just an installer designed to pull a project from a specifi
 
 The components that are required to ship an application using it are:
 - The Go executable (exe for windows for example)
-- A python venv (located in base-venv). It does not require any packages to be installed.
+- A portable python installation, winpython for windows and TBD for linux/macOS
 - The install.py script and base-requirements.txt
 - A repo.json file containing the settings (such as the github repository, etc)
 
@@ -12,7 +12,7 @@ The rundown on its functionality is:
 
 - Go program: 
   - Functions as the entrypoint (gets called to actually start the program)
-  - Creates a new venv from base-venv if not already done
+  - Creates a new venv if not already done, from the portable python
   - Calls install.py from the new venv
 - Install.py: 
   - Install its own prerequisites (from base-requirements.txt) if missing

@@ -67,6 +67,8 @@ except ImportError:
 
     root.mainloop()
     print("Done - exiting with errorcode 99 to signal the go exe to restart.")
+    print("Also, creating the 'installing' file, as I'm gonna go ahead and assume we need to do some cleanup.")
+    open("installing", 'w').close()
     exit(99)
 print("Prerequisites checked.")
 repoData = json.load(open("repo.json"))
@@ -93,18 +95,8 @@ def translate_ui_text(text):
     if text is None or text == "":
         return text
 
-    if os.name == "nt":
-        # windows-specific
-        import ctypes
-        windll = ctypes.windll.kernel32
-        import locale
-        langCode = locale.windows_locale[windll.GetUserDefaultUILanguage()]
-        if "_" in langCode:
-            langCode = langCode.split("_")[0]
-    else:
-        # macos or linux
-        import locale
-        langCode = locale.getdefaultlocale()[0].split("_")[0]
+
+    langCode = locale.getdefaultlocale()[0].split("_")[0]
 
     counter = 0
     translatedText = None

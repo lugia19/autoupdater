@@ -91,8 +91,25 @@ func main() {
 	_, err = os.Stat(config.VenvFolder)
 	if os.IsNotExist(err) {
 		//Venv does not exist, create it.
-		err = filepath.Walk("base-venv", findPython)
-		checkError("Error walking the path", err)
+		if runtime.GOOS == "windows" {
+			dirs, err := os.ReadDir("WPy")
+			checkError("Error reading root directory", err)
+
+			// Find the first subfolder starts with "python-"
+			for _, dir := range dirs {
+				if dir.IsDir() && strings.HasPrefix(dir.Name(), "python-") {
+					subfolderPath := filepath.Join("WPy", dir.Name())
+					if config.UsePythonW {
+						pythonBinaryPath = filepath.Join(subfolderPath, "pythonw.exe")
+					} else {
+						pythonBinaryPath = filepath.Join(subfolderPath, "python.exe")
+					}
+					break
+				}
+			}
+		} else {
+			//TBD.
+		}
 
 		absBaseVenvPythonBinaryPath, err := filepath.Abs(pythonBinaryPath)
 		checkError("Cannot resolve absolute path for python binary", err)
