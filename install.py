@@ -91,6 +91,10 @@ class SignalEmitter(QtCore.QObject):
 
 class BoolSignalEmitter(QtCore.QObject):
     signal = QtCore.pyqtSignal(bool)
+
+class IntSignalEmitter(QtCore.QObject):
+    signal = QtCore.pyqtSignal(int)
+
 def translate_ui_text(text):
     if text is None or text == "":
         return text
@@ -175,14 +179,20 @@ class DownloadDialog(QtWidgets.QDialog):
         self.setWindowTitle(translate_ui_text('Download'))
         self.url = url
         self.location = location
-        self.signalEmitter = SignalEmitter()
-        self.signalEmitter.signal.connect(lambda: self.done(0))
+
+        self.updateProgressSignal = IntSignalEmitter()
+        self.updateProgressSignal.signal.connect(self.update_progress_bar)
+        self.previous_percent_completed = -1
+
+        self.doneSignal = SignalEmitter()
+        self.doneSignal.signal.connect(lambda: self.done(0))
         self.layout = QtWidgets.QVBoxLayout()
         self.label = QtWidgets.QLabel(translate_ui_text("Downloading PyTorch..."))
         self.layout.addWidget(self.label)
-
+        self.shouldClose = threading.Event()
         self.progress = QtWidgets.QProgressBar(self)
         self.layout.addWidget(self.progress)
+
 
         self.setLayout(self.layout)
 
@@ -203,23 +213,32 @@ class DownloadDialog(QtWidgets.QDialog):
 
         try:
             response.raise_for_status()
+            if os.path.exists(self.location):
+                os.remove(self.location)
             with open(self.location, 'wb') as file:
                 for data in response.iter_content(block_size):
+                    if self.shouldClose.is_set():
+                        file.close()
+                        os.remove(self.location)
+                        return
                     progress_tracker += len(data)
                     file.write(data)
                     if total_size_in_bytes is not None:  # Only update if 'content-length' was found
-                        self.update_progress_bar(progress_tracker, total_size_in_bytes)
+                        self.updateProgressSignal.signal.emit(int((progress_tracker / total_size_in_bytes) * 100))
+
         except requests.exceptions.RequestException as e:
+            print(e)
             if os.path.exists(self.location):
                 os.remove(self.location)
             raise
-        self.signalEmitter.signal.emit()
+        self.doneSignal.signal.emit()
 
     def finish(self):
         self.done(0)
-    def update_progress_bar(self, progress_tracker, total_size_in_bytes):
-        percent_completed = (progress_tracker / total_size_in_bytes) * 100
-        self.progress.setValue(int(percent_completed))
+    def update_progress_bar(self, percent_completed):
+        if percent_completed != self.previous_percent_completed:
+            self.progress.setValue(percent_completed)
+            self.previous_percent_completed = percent_completed
 
     def exec(self):
         self.download_thread.start()
@@ -238,8 +257,10 @@ class DownloadDialog(QtWidgets.QDialog):
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.shouldClose.set()
             event.accept()
-            sys.exit(1)
+            app.exit(0)
+            sys.exit(0)
         else:
             event.ignore()
 
@@ -250,9 +271,13 @@ class PackageDownloadDialog(QtWidgets.QDialog):
         self.packages = packages
         self.signalEmitter = SignalEmitter()
         self.signalEmitter.signal.connect(lambda: self.done(0))
-
+        self.shouldClose = threading.Event()
         self.boolSignalEmitter = BoolSignalEmitter()
         self.boolSignalEmitter.signal.connect(self.setpytorch)
+
+        self.updateProgressSignal = IntSignalEmitter()
+        self.updateProgressSignal.signal.connect(self.update_progress_bar)
+        self.previous_percent_completed = -1
 
         self.layout = QtWidgets.QVBoxLayout()
         self.label = QtWidgets.QLabel(normalInstallText)
@@ -270,6 +295,8 @@ class PackageDownloadDialog(QtWidgets.QDialog):
         self.progress.setMaximum(100)
 
         for i, package in enumerate(self.packages):
+            if self.shouldClose.is_set():
+                return
             package:str
             self.boolSignalEmitter.signal.emit(package.startswith("-r"))
 
@@ -308,7 +335,8 @@ class PackageDownloadDialog(QtWidgets.QDialog):
                         filename = urllib.parse.unquote(url[url.rindex("/")+1:])
                         print(f"Filename: {filename}")
                         DownloadDialog(url, filename).exec()
-
+                        if not os.path.exists(filename):
+                            return  #Something went wrong. Exit.
                         # Done downloading it - install it
                         completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', filename], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
                         print(completed_process.stdout)
@@ -328,8 +356,7 @@ class PackageDownloadDialog(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.critical(self, 'Error', f"An error occurred while installing package '{package}':\n{e.stderr}")
                 return
 
-            self.update_progress_bar(i + 1, total_packages)
-
+            self.updateProgressSignal.signal.emit(int((i + 1)/total_packages))
         self.signalEmitter.signal.emit()
 
     def setpytorch(self, isPytorch:bool):
@@ -341,9 +368,10 @@ class PackageDownloadDialog(QtWidgets.QDialog):
     def finish(self):
         self.done(0)
 
-    def update_progress_bar(self, progress_tracker, total_size_in_bytes):
-        percent_completed = (progress_tracker / total_size_in_bytes) * 100
-        self.progress.setValue(int(percent_completed))
+    def update_progress_bar(self, percent_completed):
+        if percent_completed != self.previous_percent_completed:
+            self.progress.setValue(percent_completed)
+            self.previous_percent_completed = percent_completed
 
     def exec(self):
         self.download_thread.start()
@@ -362,8 +390,10 @@ class PackageDownloadDialog(QtWidgets.QDialog):
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.shouldClose.set()
             event.accept()
-            sys.exit(1)
+            app.exit(0)
+            sys.exit(0)
         else:
             event.ignore()
 
@@ -412,8 +442,8 @@ def check_if_latest(repo_path, remote_url) -> bool:
     # Check if current commit is the latest one
     return head.id == remote_refs[b"HEAD"]
 
+app = QtWidgets.QApplication([])
 def main():
-    app = QtWidgets.QApplication([])
     if "icon" in repoData:
         app.setWindowIcon(QtGui.QIcon(repoData["icon"]))
     app.setStyleSheet(get_stylesheet())
@@ -448,6 +478,7 @@ def main():
 
 
     run_startup(repoDir, startupScript)
+    app.exit(0)
     sys.exit(0)
 
 if __name__ == "__main__":

@@ -153,16 +153,16 @@ func main() {
 	if err != nil {
 		exitError, ok := err.(*exec.ExitError) // type assert to *exec.ExitError
 		if ok {
-			exitCode := exitError.ExitCode()
-			if exitCode == 99 {
-				//Program just installed the prerequisites. Run it again.
+			for {
+				if exitError.ExitCode() != 99 || !ok {
+					break
+				}
 				cmd = exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
 				if runtime.GOOS == "windows" {
 					cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 				}
 				err = cmd.Run()
-			} else {
-				checkError("install.py script error", err)
+				exitError, ok = err.(*exec.ExitError) // type assert to *exec.ExitError
 			}
 		} else {
 			checkError("install.py script error", err)
