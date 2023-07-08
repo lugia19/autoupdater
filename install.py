@@ -104,8 +104,18 @@ def translate_ui_text(text):
     if text is None or text == "":
         return text
 
-
-    langCode = locale.getdefaultlocale()[0].split("_")[0]
+    if os.name == "nt":
+        # windows-specific
+        import ctypes
+        windll = ctypes.windll.kernel32
+        import locale
+        langCode = locale.windows_locale[windll.GetUserDefaultUILanguage()]
+        if "_" in langCode:
+            langCode = langCode.split("_")[0]
+    else:
+        # macos or linux
+        import locale
+        langCode = locale.getdefaultlocale()[0].split("_")[0]
 
     counter = 0
     translatedText = None
@@ -134,7 +144,7 @@ def translate_ui_text(text):
 
     return translatedText
 
-normalInstallText = translate_ui_text("Updating packages...")
+normalInstallText = translate_ui_text("Updating packages")
 torchInstallText = translate_ui_text("Updating pytorch, this may take a while...\nNote: The bar not moving is normal.")
 
 def get_stylesheet():
@@ -312,7 +322,7 @@ class DownloadDialog(QtWidgets.QDialog):
             event.ignore()
 
 class PackageThread(QtCore.QThread):
-    isPytorchSignal = QtCore.pyqtSignal(bool)
+    setLabelTextSignal = QtCore.pyqtSignal(str)
     setProgressMaxSignal = QtCore.pyqtSignal(int)
     updateProgressSignal = QtCore.pyqtSignal(int)
     doneSignal = QtCore.pyqtSignal()
@@ -327,11 +337,11 @@ class PackageThread(QtCore.QThread):
 
         for i, package in enumerate(self.packages):
             package: str
-            self.isPytorchSignal.emit(package.startswith("-r"))
-
             try:
                 # This is all pytorch-specific stuff.
                 if package.startswith("-r"):
+                    print(f"Installing {package}")
+                    self.setLabelTextSignal.emit(torchInstallText)
                     # process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--upgrade', "elevenlabslib"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     #                           creationflags=subprocess_flags)
                     process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--progress-bar', 'on', '--upgrade', "-r", package[2:].strip()], stdout=subprocess.PIPE,
@@ -393,12 +403,18 @@ class PackageThread(QtCore.QThread):
                         print("We used the cached one or it was already installed. Just continue.")
                     # subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
                 else:
+                    index = min([package.find(char) for char in ['=', '~', '>'] if package.find(char) != -1], default=-1)
+                    packageName = package if index == -1 else package[:index]
+                    print(f"Installing {packageName}")
+                    self.setLabelTextSignal.emit(f"{normalInstallText} ({packageName})")
+
                     subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
+                print(f"Current progress: {int((i + 1) / total_packages * 100)}%")
+                self.updateProgressSignal.emit(int((i + 1) / total_packages * 100))
             except subprocess.CalledProcessError as e:
                 self.showErrorSignal.emit(f"An error occurred while installing package '{package}':\n{e.stderr}")
                 return
 
-            self.updateProgressSignal.emit(int((i + 1) / total_packages))
         self.doneSignal.emit()
 
 class PackageDownloadDialog(QtWidgets.QDialog):
@@ -422,7 +438,7 @@ class PackageDownloadDialog(QtWidgets.QDialog):
 
         self.packageThread = PackageThread(packages)
         self.packageThread.doneSignal.connect(lambda: self.done(0))
-        self.packageThread.isPytorchSignal.connect(self.setpytorch)
+        self.packageThread.setLabelTextSignal.connect(self.setText)
         self.packageThread.updateProgressSignal.connect(self.update_progress_bar)
         self.packageThread.showErrorSignal.connect(self.showErrorAndExit)
         self.packageThread.downloadSignal.connect(self.downloadFile)
@@ -439,8 +455,7 @@ class PackageDownloadDialog(QtWidgets.QDialog):
         super().showEvent(event)
         self.packageThread.start()
 
-    def setpytorch(self, isPytorch:bool):
-        newText = torchInstallText if isPytorch else normalInstallText
+    def setText(self, newText:str):
         if self.label.text() != newText:
             self.label.setText(newText)
 
