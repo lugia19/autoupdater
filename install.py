@@ -344,7 +344,7 @@ class PackageThread(QtCore.QThread):
                     self.setLabelTextSignal.emit(torchInstallText)
                     # process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--upgrade', "elevenlabslib"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     #                           creationflags=subprocess_flags)
-                    process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--progress-bar', 'on', '--upgrade', "-r", package[2:].strip()], stdout=subprocess.PIPE,
+                    process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--no-cache-dir','--upgrade', "-r", package[2:].strip()], stdout=subprocess.PIPE,
                                                stderr=subprocess.STDOUT,
                                                creationflags=subprocess_flags)
                     url = None
