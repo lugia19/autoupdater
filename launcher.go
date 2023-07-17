@@ -149,12 +149,13 @@ func main() {
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	}
 	err = cmd.Run()
-
+	counter := 0
 	if err != nil {
 		exitError, ok := err.(*exec.ExitError) // type assert to *exec.ExitError
 		if ok {
 			for {
-				if exitError.ExitCode() != 99 || !ok {
+				counter += 1
+				if exitError.ExitCode() != 99 || !ok || counter > 3 {
 					break
 				}
 				cmd = exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
