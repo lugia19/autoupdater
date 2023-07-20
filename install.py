@@ -1,6 +1,7 @@
 import io
 import json
 import locale
+import logging
 import os
 import sys
 import threading
@@ -14,24 +15,42 @@ baserequirements = [
     "dulwich~=0.21.5"
 ]
 
+logsDir = "logs"
+
+if not os.path.exists(logsDir):
+    os.makedirs(logsDir)
+
+#Logging setup...
+logger = logging.getLogger(__name__)
+debug_handler = logging.FileHandler(os.path.join(logsDir,'install-debug.log'))
+error_handler = logging.FileHandler(os.path.join(logsDir,'install-error.log'))
+debug_handler.setLevel(logging.DEBUG)
+error_handler.setLevel(logging.ERROR)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+debug_handler.setFormatter(formatter)
+error_handler.setFormatter(formatter)
+
+logger.addHandler(debug_handler)
+logger.addHandler(error_handler)
+
 subprocess_flags = 0
 if os.name == 'nt':  # Check if the operating system is Windows
     subprocess_flags = subprocess.CREATE_NO_WINDOW  # Prevent the command prompt from appearing on Windows
 
 def install_base_requirements(installDoneEvent:threading.Event):
-    print("Thread started...")
     try:
         pipargs = [sys.executable, '-m', 'pip', 'install', '--upgrade']
         pipargs.extend(baserequirements)
         subprocess.check_call(pipargs, creationflags=subprocess_flags)
+        logging.debug("Done installing packages, exiting...")
     except subprocess.CalledProcessError as e:
-        print(f"Failed to install packages: {e.output}")
+        logging.error(f"Failed to install packages: {e.output}")
     finally:
         # Close the messagebox when done
-        print("Quitting...")
         installDoneEvent.set()
 
-print("Checking prerequisites...")
+logging.debug("Checking prerequisites...")
 try:
     import googletrans
     from PyQt6 import QtWidgets, QtCore, QtGui
@@ -40,6 +59,7 @@ try:
     import requests
 except ImportError:
     #Prerequisite not found, need to install the base requirements
+    logging.debug("Base requirements missing, installing...")
     import tkinter as tk
     from tkinter import messagebox
     import importlib
@@ -68,11 +88,11 @@ except ImportError:
     check_event()  # start checking event
 
     root.mainloop()
-    print("Done - exiting with errorcode 99 to signal the go exe to restart.")
-    print("Also, creating the 'installing' file, as I'm gonna go ahead and assume we need to do some cleanup.")
+    logging.debug("Done installing prerequisites - exiting with errorcode 99 to signal the go launcher to restart.")
+    logging.debug("Also, creating the 'installing' file, as I'm gonna go ahead and assume we need to do some cleanup.")
     open("installing", 'w').close()
     exit(99)
-print("Prerequisites checked.")
+logging.debug("Prerequisites found.")
 repoData = json.load(open("repo.json"))
 
 colors_dict = {
@@ -129,11 +149,11 @@ def translate_ui_text(text):
         except TypeError:
             counter += 1
         except Exception:
-            print("Timeout error when trying to use google translate. Not going to translate.")
+            logging.debug("Timeout error when trying to use google translate. Not going to translate.")
             break
 
     if translatedText is None:
-        print("Failed to get translation. Not translating.")
+        logging.error("Failed to get translation. Leaving it in english.")
         translatedText = text
         translatedText = translatedText[0].upper() + translatedText[1:]
 
@@ -220,7 +240,6 @@ class DownloadThread(QtCore.QThread):
             self.setProgressBarTotalSignal.emit(total_size_in_bytes)
 
         block_size = 1024 * 16
-        print(-1)
         try:
             response.raise_for_status()
             file = open(self.location, 'wb')
@@ -240,13 +259,13 @@ class DownloadThread(QtCore.QThread):
                     if current_time - last_emit_time >= 1:
                         elapsed_time_since_last_emit = current_time - last_emit_time
                         download_speed = data_received_since_last_emit / elapsed_time_since_last_emit
-                        print(f"Download speed: {download_speed / 1024 / 1024:.2f} MBps")
+                        logging.debug(f"Download speed: {download_speed / 1024 / 1024:.2f} MBps")
 
                         # Calculate ETA
                         remaining_data = total_size_in_bytes - total_data_received
                         if download_speed != 0:  # Avoid division by zero
                             eta = int(remaining_data / download_speed)
-                            print(f"ETA: {eta} seconds")
+                            logging.debug(f"ETA: {eta} seconds")
                             self.labelTextSignal.emit(eta)
                         self.updateProgressSignal.emit(int((total_data_received / total_size_in_bytes) * 100))
                         # Reset tracking variables for the next X seconds
@@ -257,7 +276,7 @@ class DownloadThread(QtCore.QThread):
             file.close()
 
         except requests.exceptions.RequestException as e:
-            print(e)
+            logging.exception(e)
             if os.path.exists(self.location):
                 os.remove(self.location)
             raise
@@ -340,7 +359,7 @@ class PackageThread(QtCore.QThread):
             try:
                 # This is all pytorch-specific stuff.
                 if package.startswith("-r"):
-                    print(f"Installing {package}")
+                    logging.debug(f"Installing {package}")
                     self.setLabelTextSignal.emit(torchInstallText)
                     # process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--upgrade', "elevenlabslib"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     #                           creationflags=subprocess_flags)
@@ -351,7 +370,6 @@ class PackageThread(QtCore.QThread):
                     isCollecting = False
                     for line in iter(process.stdout.readline, b''):  # Reads the output line by line.
                         line = line.decode('utf-8').strip().lower()  # Decodes the bytes to string and removes newline character at the end.
-                        print(line)  # Logs the line.
                         if "collecting torch" in line:
                             # It's collecting torch
                             isCollecting = True
@@ -362,7 +380,7 @@ class PackageThread(QtCore.QThread):
                         if isCollecting and "downloading" in line:
                             url = line[len("downloading"):]
                             url = url[:url.rindex("(")].strip()
-                            print("Installing it so we add it to the cache again...")
+                            logging.debug("Found correct wheel, killing pip...")
                             # Pip has selected the wheel to download. Kill it.
                             process.stdout.close()  # Closes the stdout pipe.
                             process.terminate()
@@ -370,13 +388,13 @@ class PackageThread(QtCore.QThread):
                             break
 
                     if url is not None:
-                        print(f"URL found: {url}")
+                        logging.debug(f"URL found: {url}")
                         import urllib.parse
                         filename = urllib.parse.unquote(url[url.rindex("/") + 1:])
-                        print(f"Filename: {filename}")
+                        logging.debug(f"Filename: {filename}")
 
                         if os.path.exists(filename):
-                            print("Deleting file...")
+                            logging.debug("Deleting file...")
                             os.remove(filename)
 
                         if self.downloadDone.is_set():
@@ -390,7 +408,6 @@ class PackageThread(QtCore.QThread):
                             return  # Something went wrong. Throw an error and exit.
                         # Done downloading it - install it
                         completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', filename], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
-                        print(completed_process.stdout)
 
                         # Remove the file
                         os.remove(filename)
@@ -398,18 +415,17 @@ class PackageThread(QtCore.QThread):
                         completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True,
                                                            creationflags=subprocess_flags)
                         print(completed_process.stdout)
-                        print("HUH")
                     else:
-                        print("We used the cached one or it was already installed. Just continue.")
+                        logging.debug("We used the cached torch or it was already installed. This shouldn't happen as I disabled the cache.")
                     # subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
                 else:
                     index = min([package.find(char) for char in ['=', '~', '>'] if package.find(char) != -1], default=-1)
                     packageName = package if index == -1 else package[:index]
-                    print(f"Installing {packageName}")
+                    logging.debug(f"Installing {packageName}")
                     self.setLabelTextSignal.emit(f"{normalInstallText} ({packageName})")
 
                     subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
-                print(f"Current progress: {int((i + 1) / total_packages * 100)}%")
+                logging.debug(f"Current progress: {int((i + 1) / total_packages * 100)}%")
                 self.updateProgressSignal.emit(int((i + 1) / total_packages * 100))
             except subprocess.CalledProcessError as e:
                 self.showErrorSignal.emit(f"An error occurred while installing package '{package}':\n{e.stderr}")
@@ -448,6 +464,7 @@ class PackageDownloadDialog(QtWidgets.QDialog):
         self.packageThread.downloadDone.set()
 
     def showErrorAndExit(self, error):
+        logging.error(error)
         QtWidgets.QMessageBox.critical(self, 'Error', error)
         sys.exit(1)
 
@@ -570,7 +587,6 @@ def main():
     sys.exit(0)
 
 if __name__ == "__main__":
-    print("Starting main...")
     if os.name == "nt":
         import ctypes
         myappid = u'lugia19.installer'

@@ -51,8 +51,18 @@ func checkError(message string, err error) {
 	if err != nil {
 		logMsg := fmt.Sprintf("%s: %v", message, err)
 
+		logDir := "logs"
+		if _, err := os.Stat(logDir); os.IsNotExist(err) {
+			err := os.MkdirAll(logDir, 0755)
+			if err != nil {
+				log.Fatal("Cannot create log directory: ", err)
+			}
+		}
+
+		logFile := filepath.Join(logDir, "launcher-error.log")
+
 		// Write to a log file
-		f, err := os.OpenFile("error.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal("Cannot open log file: ", err)
 		}
