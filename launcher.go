@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -92,8 +91,24 @@ func checkError(message string, err error) {
 func main() {
 	fmt.Println("Started!")
 
-	//Create a bytes buffer for stderr
-	var stderr bytes.Buffer
+	if _, err := os.Stat("./logs"); os.IsNotExist(err) {
+		err = os.Mkdir("./logs", 0755)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	
+	f, err := os.OpenFile("logs/python_crash.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+
+	// Write the current time to the file
+	_, err = f.WriteString("Logging stderr for run at datetime: " + time.Now().Format("2006-01-02 15:04:05") + "\n")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	data, err := os.ReadFile("repo.json")
 	checkError("Error reading repo.json", err)
@@ -131,12 +146,12 @@ func main() {
 		fmt.Println("Base-venv Python Binary Path: ", absBaseVenvPythonBinaryPath) // Print pythonBinaryPath
 
 		newVenvCommand := exec.Command(absBaseVenvPythonBinaryPath, "-m", "venv", config.VenvFolder)
-		newVenvCommand.Stderr = &stderr
+		newVenvCommand.Stderr = f
 		if runtime.GOOS == "windows" {
 			newVenvCommand.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		}
 		err = newVenvCommand.Run()
-		checkError("Failed to create new venv:"+stderr.String(), err)
+		checkError("Failed to create new venv, see python_crash.log", err)
 	} else if err != nil {
 		// error checking directory, report and exit
 		checkError("Error checking new venv directory", err)
@@ -160,7 +175,7 @@ func main() {
 	fmt.Println("Venv Python Binary Path: ", absNewVenvPythonBinaryPath)
 
 	cmd := exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
-	cmd.Stderr = &stderr
+	cmd.Stderr = f
 
 	if runtime.GOOS == "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
@@ -183,10 +198,10 @@ func main() {
 				exitError, ok = err.(*exec.ExitError) // type assert to *exec.ExitError
 			}
 		} else {
-			checkError("install.py script error"+stderr.String(), err)
+			checkError("install.py script error, see python_crash.log", err)
 		}
 	}
 
-	checkError("install.py script error"+stderr.String(), err)
+	checkError("install.py script error, see python_crash.log", err)
 
 }

@@ -511,7 +511,11 @@ def clone_or_pull(gitUrl, targetDirectory):
 def run_startup(repo_dir, script):
     if os.path.exists(os.path.join(repo_dir, script)):
         os.chdir(repo_dir)
-        subprocess.check_call([sys.executable, script], creationflags=subprocess_flags)
+        try:
+            subprocess.check_output([sys.executable, script], stderr=subprocess.STDOUT, creationflags=subprocess_flags)
+        except subprocess.CalledProcessError as e:
+            sys.stderr.write(f"Startup script subprocess stderr:\n {e.output.decode('utf-8')}\n")
+            raise
 
 
 def check_requirements(repo_dir):
