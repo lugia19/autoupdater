@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -91,6 +92,9 @@ func checkError(message string, err error) {
 func main() {
 	fmt.Println("Started!")
 
+	//Create a bytes buffer for stderr
+	var stderr bytes.Buffer
+
 	data, err := os.ReadFile("repo.json")
 	checkError("Error reading repo.json", err)
 
@@ -127,11 +131,12 @@ func main() {
 		fmt.Println("Base-venv Python Binary Path: ", absBaseVenvPythonBinaryPath) // Print pythonBinaryPath
 
 		newVenvCommand := exec.Command(absBaseVenvPythonBinaryPath, "-m", "venv", config.VenvFolder)
+		newVenvCommand.Stderr = &stderr
 		if runtime.GOOS == "windows" {
 			newVenvCommand.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 		}
 		err = newVenvCommand.Run()
-		checkError("Failed to create new venv", err)
+		checkError("Failed to create new venv:"+stderr.String(), err)
 	} else if err != nil {
 		// error checking directory, report and exit
 		checkError("Error checking new venv directory", err)
@@ -155,6 +160,8 @@ func main() {
 	fmt.Println("Venv Python Binary Path: ", absNewVenvPythonBinaryPath)
 
 	cmd := exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
+	cmd.Stderr = &stderr
+
 	if runtime.GOOS == "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	}
@@ -176,10 +183,10 @@ func main() {
 				exitError, ok = err.(*exec.ExitError) // type assert to *exec.ExitError
 			}
 		} else {
-			checkError("install.py script error", err)
+			checkError("install.py script error"+stderr.String(), err)
 		}
 	}
 
-	checkError("install.py script error", err)
+	checkError("install.py script error"+stderr.String(), err)
 
 }
