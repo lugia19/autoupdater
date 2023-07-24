@@ -358,8 +358,10 @@ class PackageThread(QtCore.QThread):
         for i, package in enumerate(self.packages):
             package: str
             try:
-                # This is all pytorch-specific stuff.
+
+                completed_process = None
                 if package.startswith("-r"):
+                    # This is all pytorch-specific stuff.
                     logger.debug(f"Installing {package}")
                     self.setLabelTextSignal.emit(torchInstallText)
                     # process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--upgrade', "elevenlabslib"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -409,13 +411,12 @@ class PackageThread(QtCore.QThread):
                             return  # Something went wrong. Throw an error and exit.
                         # Done downloading it - install it
                         completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', filename], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
-
+                        logger.debug(completed_process.stdout)
                         # Remove the file
                         os.remove(filename)
-                        # Now we re-install the file.
+                        # Now we re-install the requirements from the file.
                         completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True,
                                                            creationflags=subprocess_flags)
-                        print(completed_process.stdout)
                     else:
                         logger.debug("We used the cached torch or it was already installed. This shouldn't happen as I disabled the cache.")
                     # subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', "-r", package[2:].strip()], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
@@ -425,7 +426,9 @@ class PackageThread(QtCore.QThread):
                     logger.debug(f"Installing {packageName}")
                     self.setLabelTextSignal.emit(f"{normalInstallText} ({packageName})")
 
-                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
+                    completed_process = subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', package], check=True, text=True, capture_output=True, creationflags=subprocess_flags)
+                if completed_process is not None:
+                    logger.debug(completed_process.stdout)
                 logger.debug(f"Current progress: {int((i + 1) / total_packages * 100)}%")
                 self.updateProgressSignal.emit(int((i + 1) / total_packages * 100))
             except subprocess.CalledProcessError as e:
@@ -520,7 +523,6 @@ def run_startup(repo_dir, script):
             error_message = e.output.decode('utf-8')
             sys.stderr.write(f"Startup script subprocess stderr:\n {error_message}\n")
             if "ModuleNotFoundError" in error_message:
-                sys.stderr.write(f"FUCK YOU.")
                 #Let's signal to the go caller that we need to reinstall some module.
                 open("installing", "w").close()
                 raise ValueError("Missing module.")
