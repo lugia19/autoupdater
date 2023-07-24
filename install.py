@@ -510,12 +510,22 @@ def clone_or_pull(gitUrl, targetDirectory):
 
 def run_startup(repo_dir, script):
     if os.path.exists(os.path.join(repo_dir, script)):
+        previousDir = os.getcwd()
         os.chdir(repo_dir)
         try:
             subprocess.check_output([sys.executable, script], stderr=subprocess.STDOUT, creationflags=subprocess_flags)
         except subprocess.CalledProcessError as e:
-            sys.stderr.write(f"Startup script subprocess stderr:\n {e.output.decode('utf-8')}\n")
-            raise
+            os.chdir(previousDir)
+
+            error_message = e.output.decode('utf-8')
+            sys.stderr.write(f"Startup script subprocess stderr:\n {error_message}\n")
+            if "ModuleNotFoundError" in error_message:
+                sys.stderr.write(f"FUCK YOU.")
+                #Let's signal to the go caller that we need to reinstall some module.
+                open("installing", "w").close()
+                raise ValueError("Missing module.")
+            else:
+                raise
 
 
 def check_requirements(repo_dir):
@@ -585,11 +595,13 @@ def main():
             dialog.show()
             app.exec()
         os.remove("installing")
+    try:
+        run_startup(repoDir, startupScript)
+        app.exit(0)
+        sys.exit(0)
+    except ValueError:
+        exit(99)
 
-
-    run_startup(repoDir, startupScript)
-    app.exit(0)
-    sys.exit(0)
 
 if __name__ == "__main__":
     if os.name == "nt":
