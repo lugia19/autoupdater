@@ -43,10 +43,20 @@ def install_base_requirements(installDoneEvent:threading.Event):
     try:
         pipargs = [sys.executable, '-m', 'pip', 'install', '--upgrade']
         pipargs.extend(baserequirements)
-        subprocess.check_call(pipargs, creationflags=subprocess_flags)
+
+        completed_process = subprocess.run(pipargs,
+                                           check=True,
+                                           text=True,
+                                           capture_output=True,
+                                           creationflags=subprocess_flags)
+
+        logger.debug(completed_process.stdout)
+        if completed_process.stderr:
+            logger.error(completed_process.stderr)
+
         logger.debug("Done installing packages, exiting...")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to install packages: {e.output}")
+        logger.error(f"Failed to install packages: {e.stdout} {e.stderr}")
     finally:
         # Close the messagebox when done
         installDoneEvent.set()

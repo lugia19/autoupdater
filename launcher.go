@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+import (
+	"golang.org/x/sys/windows"
+)
+
 var pythonBinaryPath string
 
 type Config struct {
@@ -49,6 +53,16 @@ func findPython(path string, info os.FileInfo, err error) error {
 
 func checkError(message string, err error) {
 	if err != nil {
+
+		if !amAdmin() {
+			if strings.Contains(message, "venv") {
+				runMeElevatedWithArg("-delete-venv")
+			} else {
+				runMeElevated()
+			}
+			os.Exit(0)
+		}
+
 		logMsg := fmt.Sprintf("%s: %v", message, err)
 
 		logDir := "logs"
@@ -97,7 +111,7 @@ func main() {
 			log.Fatal(err)
 		}
 	}
-	
+
 	f, err := os.OpenFile("logs/python_crash.log", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatal(err)
@@ -115,6 +129,13 @@ func main() {
 
 	err = json.Unmarshal(data, &config)
 	checkError("Error parsing repo.json", err)
+
+	for _, arg := range os.Args {
+		if arg == "-delete-venv" {
+			err := os.RemoveAll(config.VenvFolder)
+			checkError("Failed to delete venv folder", err)
+		}
+	}
 
 	//Check if venv already exists...
 	_, err = os.Stat(config.VenvFolder)
@@ -152,6 +173,7 @@ func main() {
 		}
 		err = newVenvCommand.Run()
 		checkError("Failed to create new venv, see python_crash.log", err)
+
 	} else if err != nil {
 		// error checking directory, report and exit
 		checkError("Error checking new venv directory", err)
@@ -188,7 +210,12 @@ func main() {
 			for {
 				counter += 1
 				if exitError.ExitCode() != 99 || !ok || counter > 3 {
-					break
+					if !amAdmin() {
+						runMeElevated()
+						os.Exit(0)
+					} else {
+						checkError("Install failed even when running as admin. Exiting.", err)
+					}
 				}
 				cmd = exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
 				if runtime.GOOS == "windows" {
@@ -204,4 +231,34 @@ func main() {
 
 	checkError("install.py script error, see python_crash.log", err)
 
+}
+
+func runMeElevated() {
+	runMeElevatedWithArg("")
+}
+
+func runMeElevatedWithArg(arg string) {
+	verb := "runas"
+	exe, _ := os.Executable()
+	cwd, _ := os.Getwd()
+	allArgs := append(os.Args[1:], arg)
+
+	args := strings.Join(allArgs, " ")
+
+	verbPtr, _ := syscall.UTF16PtrFromString(verb)
+	exePtr, _ := syscall.UTF16PtrFromString(exe)
+	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
+	argPtr, _ := syscall.UTF16PtrFromString(args)
+
+	var showCmd int32 = 0 //SW_HIDE
+	err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
+	if err != nil {
+		fmt.Println(err)
+	}
+}
+
+func amAdmin() bool {
+	elevated := windows.GetCurrentProcessToken().IsElevated()
+	fmt.Printf("admin %v\n", elevated)
+	return elevated
 }
