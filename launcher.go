@@ -53,11 +53,14 @@ func findPython(path string, info os.FileInfo, err error) error {
 
 func checkError(message string, err error) {
 	if err != nil {
-
+		print(message)
 		if !amAdmin() {
+			print("Restarting as admin...")
 			if strings.Contains(message, "venv") {
+				print("And deleting venv!")
 				runMeElevatedWithArg("-delete-venv")
 			} else {
+				print("Without deleting venv.")
 				runMeElevated()
 			}
 			os.Exit(0)
@@ -132,6 +135,7 @@ func main() {
 
 	for _, arg := range os.Args {
 		if arg == "-delete-venv" {
+			print("Deleting venv...")
 			err := os.RemoveAll(config.VenvFolder)
 			checkError("Failed to delete venv folder", err)
 		}
@@ -212,10 +216,22 @@ func main() {
 				if exitError.ExitCode() != 99 || !ok || counter > 3 {
 					if !amAdmin() {
 						runMeElevated()
-						os.Exit(0)
 					} else {
-						checkError("Install failed even when running as admin. Exiting.", err)
+						deleteVenv := false
+						for _, arg := range os.Args {
+							if arg == "-delete-venv" {
+								deleteVenv = true
+								break
+							}
+						}
+						if deleteVenv {
+							checkError("Install failed even after resetting venv. Giving up.", err)
+						} else {
+							print("Install failed even when running as admin, resetting venv...")
+							runMeElevatedWithArg("-delete-venv")
+						}
 					}
+					os.Exit(1)
 				}
 				cmd = exec.Command(absNewVenvPythonBinaryPath, absPythonScriptPath)
 				if runtime.GOOS == "windows" {
@@ -250,7 +266,7 @@ func runMeElevatedWithArg(arg string) {
 	cwdPtr, _ := syscall.UTF16PtrFromString(cwd)
 	argPtr, _ := syscall.UTF16PtrFromString(args)
 
-	var showCmd int32 = 0 //SW_HIDE
+	var showCmd int32 = 1 //SW_HIDE
 	err := windows.ShellExecute(0, verbPtr, exePtr, argPtr, cwdPtr, showCmd)
 	if err != nil {
 		fmt.Println(err)

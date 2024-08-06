@@ -11,7 +11,8 @@ import time
 baserequirements = [
     "requests",
     "googletrans~=4.0.0rc1",
-    "PyQt6~=6.5.1",
+    "PyQt6",
+    "PyQt6-Qt6",
     "dulwich~=0.21.5"
 ]
 
@@ -68,9 +69,9 @@ try:
     import dulwich
     from dulwich import porcelain, client, repo
     import requests
-except ImportError:
+except ModuleNotFoundError as e:
     #Prerequisite not found, need to install the base requirements
-    logger.debug("Base requirements missing, installing...")
+    logger.debug(f"Base requirements missing {e}, installing...")
     import tkinter as tk
     from tkinter import messagebox
     import importlib
@@ -102,6 +103,9 @@ except ImportError:
     logger.debug("Done installing prerequisites - exiting with errorcode 99 to signal the go launcher to restart.")
     logger.debug("Also, creating the 'installing' file, as I'm gonna go ahead and assume we need to do some cleanup.")
     open("installing", 'w').close()
+    exit(99)
+except ImportError as e:
+    logger.debug(f"{e}: Some other bug happened!")
     exit(99)
 logger.debug("Prerequisites found.")
 repoData = json.load(open("repo.json"))
@@ -374,8 +378,6 @@ class PackageThread(QtCore.QThread):
                     # This is all pytorch-specific stuff.
                     logger.debug(f"Installing {package}")
                     self.setLabelTextSignal.emit(torchInstallText)
-                    # process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--upgrade', "elevenlabslib"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                    #                           creationflags=subprocess_flags)
                     process = subprocess.Popen([sys.executable, '-m', 'pip', 'install', '--no-cache-dir','--upgrade', "-r", package[2:].strip()], stdout=subprocess.PIPE,
                                                stderr=subprocess.STDOUT,
                                                creationflags=subprocess_flags)
@@ -554,7 +556,8 @@ def check_requirements(repo_dir):
         # Strip out comments and whitespace, ignore empty lines
         packages += [line.split('#', 1)[0].strip() for line in lines if line.split('#', 1)[0].strip()]
 
-
+    # Filter out packages that include "pyqt6" in their name. We don't update those.
+    packages = [package for package in packages if "pyqt6" not in package.lower()]
 
     return packages
 
